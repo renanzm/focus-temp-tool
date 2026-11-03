@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+# backups do bloco de config do IPC (contêm dados do SEU carro)
+backup_ipc_*.bin
+# capturas seriais podem conter VIN: não commitar por padrão
+captura*.txt
+*.log
