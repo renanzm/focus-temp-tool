@@ -303,11 +303,12 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("scan", help="testa adaptador e contato com o IPC")
     st = sub.add_parser("status", help="lê e mostra a config atual de temperatura")
-    st.add_argument("--debug", action="store_true")
+    # SUPPRESS: sem isso, o default False do subcomando apaga o --debug global
+    st.add_argument("--debug", action="store_true", default=argparse.SUPPRESS)
     sr = sub.add_parser("set-real", help="muda para temperatura REAL (travado até verificar)")
-    sr.add_argument("--debug", action="store_true")
+    sr.add_argument("--debug", action="store_true", default=argparse.SUPPRESS)
     ss = sub.add_parser("set-sim", help="volta para temperatura SIMULADA (travado até verificar)")
-    ss.add_argument("--debug", action="store_true")
+    ss.add_argument("--debug", action="store_true", default=argparse.SUPPRESS)
     pc = sub.add_parser("parse-capture", help="analisa um log serial do ELM-FF2")
     pc.add_argument("arquivo")
 
@@ -317,8 +318,6 @@ def main():
         r.porta = args.porta
     if getattr(args, "baud", None):
         r.baud = args.baud
-    if not hasattr(args, "debug"):
-        args.debug = False
 
     if args.cmd == "scan":
         return cmd_scan(args, r)

@@ -17,8 +17,10 @@ Formato de entrada aceito (tolerante):
         << 720 06 50 85 ...  (resposta do módulo)
     Prefixos aceitos p/ ENVIO: ">>", "TX", "TX:", "SEND", "->"
     Prefixos aceitos p/ RECEBIDO: "<<", "RX", "RX:", "RECV", "<-"
-  • Sem prefixo, o parser usa heurística: linhas "AT..." e a linha de hex logo
-    após um ">" são tratadas como ENVIO; o resto como RECEBIDO.
+  • Sem prefixo, o parser usa o prompt ">" do ELM327: linhas "AT..." e o comando
+    depois de um ">" (na mesma linha ou na seguinte) são ENVIO; o resto é
+    RECEBIDO. Sem prompt no log, não dá para separar uma requisição em hex de uma
+    resposta com segurança, então essas linhas não viram requisições.
 """
 
 import re
@@ -39,7 +41,7 @@ SERVICOS = {
 _hexline = re.compile(r"^[0-9A-Fa-f ]+$")
 
 
-def _classificar(linha):
+def _classificar(linha, apos_prompt=False):
     s = linha.strip()
     if not s:
         return None, None
@@ -51,7 +53,9 @@ def _classificar(linha):
         if up.startswith(p):
             return "rx", s[len(p):].strip()
     # heurística sem prefixo
-    if up.startswith("AT"):
+    if up.startswith(">"):
+        return "tx", s[1:].strip()
+    if up.startswith("AT") or apos_prompt:
         return "tx", s
     return "rx", s
 
@@ -98,10 +102,15 @@ def analisar(texto_log):
     eventos = []
     pend_tx = None  # (header, payload_bytes)
 
+    apos_prompt = False  # o último ">" estava sozinho na linha?
     for linha in texto_log.split("\n"):
-        tipo, conteudo = _classificar(linha)
+        if linha.strip() == ">":
+            apos_prompt = True
+            continue
+        tipo, conteudo = _classificar(linha, apos_prompt)
         if not tipo:
             continue
+        apos_prompt = False
         up = conteudo.upper().replace(" ", "")
         if tipo == "tx":
             m = re.match(r"ATSH([0-9A-F]{3,8})", up)

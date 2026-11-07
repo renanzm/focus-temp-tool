@@ -119,8 +119,12 @@ ELM-FF2 fazendo a troca em um carro real para preencher quase toda a receita.
 
 ### Formato do log
 
-Cada linha precisa começar com a direção do tráfego: `>>`, `TX`, `SEND` ou `->`
+O ideal é cada linha começar com a direção do tráfego: `>>`, `TX`, `SEND` ou `->`
 para o que foi enviado, e `<<`, `RX`, `RECV` ou `<-` para o que foi recebido.
+
+Sem esses prefixos, o log precisa trazer o prompt `>` do ELM327 antes de cada
+comando, na mesma linha ou na anterior. Sem prefixo e sem prompt, o programa não
+consegue separar o que foi enviado do que foi recebido.
 
 ### Exemplo
 
