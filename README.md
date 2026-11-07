@@ -1,129 +1,202 @@
 # focus-temp-tool
 
-Ferramenta mínima e open-source para trocar a indicação de **temperatura do
-motor no painel** do **Ford Focus Mk2 (C307)** de **simulada** para **real**,
-usando um adaptador **ELM327** na porta OBD-II.
+Uma ferramenta pequena e open source para o **Ford Focus Mk2 (C307)** com um
+único objetivo: fazer o ponteiro de temperatura do painel mostrar a temperatura
+**real** do motor, em vez da **simulada**.
 
-Os Focus brasileiros saem de fábrica com a temperatura **simulada** (o ponteiro
-fica "preso" no meio). O painel (módulo **IPC**) tem um bit de configuração que
-troca para a leitura **real** do sensor. Ferramentas como o ELM-FF2 fazem isso —
-mas são difíceis de usar e cheias de opções que ninguém quer. Este projeto faz
-**só isso**, com segurança.
+> **Importante: hoje esta ferramenta ainda não faz a troca no carro.**
+> A gravação está travada de propósito até alguém confirmar os valores certos a
+> partir de um carro real, e nada aqui foi testado em um carro ainda. Se você quer
+> fazer a troca agora, use o ELM-FF2. Se quer ajudar a tirar o projeto do papel,
+> veja [Como ajudar](#como-ajudar-capturando-a-troca).
 
----
+## Qual é o problema?
 
-## ⚠️ Status atual: LEITURA liberada, GRAVAÇÃO travada
+Os Focus brasileiros saem de fábrica com a temperatura **simulada**: o ponteiro
+fica parado no meio e não mostra o que o motor está fazendo de verdade. O painel
+tem uma configuração interna que passa a usar o sensor real.
 
-Gravar configuração num módulo do carro pode **corromper o painel** se o byte,
-o bit, o checksum ou o Security Access estiverem errados. Por isso o programa
-**só grava quando a "receita" (`recipe.py`) estiver confirmada** para o Focus
-Mk2 (flag `VERIFICADO = True`).
+O ELM-FF2, um programa gratuito feito por um clube russo de donos de Focus, já
+consegue mudar isso. Só que ele é difícil de usar e cheio de opções que a maioria
+das pessoas nunca vai precisar. A ideia aqui é fazer **só essa troca**, com
+poucos comandos e com segurança.
 
-Hoje essa receita **ainda não está verificada**. O que já funciona:
+## Em que pé está
 
-| Comando          | Faz                                                  | Estado |
-|------------------|------------------------------------------------------|--------|
-| `scan`           | Testa o adaptador e o contato com o IPC              | ✅ pronto |
-| `status`         | Lê e mostra a config de temperatura                 | ⏳ precisa dos parâmetros de leitura |
-| `set-real`       | Muda para temperatura real                          | 🔒 travado até verificar |
-| `set-sim`        | Volta para simulada                                 | 🔒 travado até verificar |
-| `parse-capture`  | Ajuda a extrair a receita de um log do ELM-FF2      | ✅ pronto |
+| Comando         | O que faz                                          | Situação hoje |
+|-----------------|----------------------------------------------------|---------------|
+| `parse-capture` | Analisa um log do ELM-FF2 e ajuda a achar os valores | ✅ Funciona; testado só com logs de exemplo |
+| `scan`          | Testa o adaptador e tenta falar com o painel       | 🧪 Pronto, mas ainda não testado em carro |
+| `status`        | Mostra se a temperatura está real ou simulada      | ⏳ Ainda não funciona: falta o comando de leitura |
+| `set-real`      | Muda para temperatura real                         | 🔒 Travado |
+| `set-sim`       | Volta para temperatura simulada                    | 🔒 Travado |
 
-Isso é proposital: **ninguém deveria gravar bytes "no chute" no painel.**
+### Por que a gravação está travada?
 
----
+Gravar um valor errado pode **corromper a configuração do painel**. Os dados
+específicos do carro ficam em [`recipe.py`](recipe.py), a "receita", e o programa
+recusa qualquer gravação enquanto `VERIFICADO = False`. Hoje a receita tem só
+palpites ou campos em branco.
 
-## O que a engenharia reversa mostrou
+Para destravar, falta confirmar em um carro real:
 
-O ELM-FF2 é freeware (sem cláusula anti-RE), então analisá-lo é legítimo. Ele
-foi **decompilado por completo no Ghidra** (3498 funções). Conclusões:
+- [ ] Os IDs CAN do painel (hoje `0x720` e `0x728` são apenas palpites)
+- [ ] Os comandos de sessão, leitura e escrita
+- [ ] Se o painel exige Security Access e, nesse caso, qual é o algoritmo
+- [ ] O byte e o bit exatos da opção de temperatura
+- [ ] Se existe checksum e como ele é calculado. **O código ainda não calcula
+      checksum**, então isso teria que ser implementado se ele for necessário
 
-- É Delphi; fala com o ELM327 por **porta serial Win32** (`CreateFileA`/
-  `WriteFile`/`ReadFile`), montando os comandos `AT` **caractere a caractere**
-  (por isso não aparecem como texto no binário);
-- A tabela de opções está no recurso de formulário (DFM): `IPC34` = temperatura
-  simulada, `IPC36` = real;
-- O banco do ELMConfig (`frw.dat`) é **criptografado**.
+## O que você precisa
 
-O que a análise estática **não** entrega com segurança neste binário (stripped,
-bytes de protocolo gerados em runtime a partir de tabelas): os **IDs CAN**, a
-**sequência de serviços**, **se há Security Access** e seu algoritmo, o
-**offset/bit** real e o **checksum**. E mesmo que entregasse, **não dá para
-validar sem o carro** — errar arrisca o painel.
+- **Python 3.8 ou mais novo**
+- **Um adaptador ELM327 que alcance a rede MS-CAN.** Este é o ponto que mais
+  costuma dar errado.
 
-Por isso a fonte de verdade **confiável** é uma **captura serial** do ELM-FF2
-fazendo a troca no seu carro: determinística e idêntica ao seu IPC/firmware. O
-módulo [`capture.py`](capture.py) converte essa captura na receita
-automaticamente (decodifica os serviços, detecta Security Access e deduz o
-byte/bit pelo diff entre o bloco lido e o gravado):
+No Focus Mk2 o painel normalmente fica na rede **MS-CAN** (125 kbit/s), e não na
+HS-CAN (500 kbit/s) usada pelo motor. Um ELM327 USB simples costuma enxergar só a
+HS-CAN e não chega ao painel. Procure um adaptador com chave HS/MS-CAN ou com
+troca automática de rede, como o OBDLink EX, o vLinker FS ou um ELM327 com chave.
 
-```
-$ python focus_temp.py parse-capture captura.txt
-  REQ  0x720  svc=ReadDataByLocalId    dados=2101
-  RESP 0x728  svc=ReadDataByLocalId    dados=6101AABBCCDD04
-  REQ  0x720  svc=SecurityAccess       dados=2701
-  ...
-  REQ  0x720  svc=WriteDataByLocalId   dados=3B01AABBCCDD14
-Security Access (0x27) presente? SIM
-Tentando deduzir byte/bit alterado (leitura x escrita):
-  byte_offset=5  bit=4  (0x04 -> 0x14)
+A seleção de MS-CAN no código ainda é provisória, então talvez você precise
+ajustar `protocolo_ms` em [`recipe.py`](recipe.py) para o seu adaptador.
+
+## Instalação
+
+```bash
+git clone https://github.com/renanzm/focus-temp-tool.git
 ```
 
----
-
-## Como gerar a receita (captura do ELM-FF2)
-
-Você faz isso **uma vez**; depois o `recipe.py` fica pronto para toda a comunidade.
-
-1. Instale um par de portas virtuais (**com0com**) ligando `COM3 <-> COM4`.
-2. Aponte o **ELM-FF2** para uma das portas e um **logger serial**
-   (ex.: HHD Serial Monitor, ou `pyserial` em modo sniff) para a outra, ou use
-   um monitor que grave o tráfego real do adaptador.
-3. No carro, com o ELM-FF2, faça **apenas** a troca de temperatura simulada→real
-   (como você já sabe fazer) enquanto o log grava.
-4. Salve o log em texto e rode:
-   ```bash
-   python focus_temp.py parse-capture meu_log.txt
-   ```
-5. Abra uma *issue* com esse log (sem VIN/dados pessoais). Com ele dá para
-   preencher em `recipe.py`: IDs CAN, sessão, **se há Security Access** e o
-   algoritmo seed→key, o serviço de leitura/escrita, o **byte/bit** da opção e
-   o **checksum**. Aí a flag `VERIFICADO` vira `True`.
-
-> A engenharia reversa do ELM-FF2 no Ghidra pode **corroborar** esses valores,
-> mas a captura é o que torna a gravação segura.
-
----
-
-## Adaptador (ponto crítico no Mk2)
-
-No Focus Mk2 o **IPC normalmente fica na rede MS-CAN (125 kbit/s)**, não na
-HS-CAN (500 kbit/s) do motor. Um ELM327 USB simples costuma **só** enxergar a
-HS-CAN e **não alcança o painel**. Use um adaptador com **chave HS/MS-CAN** ou
-multiplexado (ex.: OBDLink EX, vLinker FS, ou ELM327 com switch MS/HS-CAN).
-
----
-
-## Instalação e uso
+```bash
+cd focus-temp-tool
+```
 
 ```bash
 pip install -r requirements.txt
-python focus_temp.py --porta COM3 scan
-python focus_temp.py --porta COM3 status
 ```
 
-Requisitos: Python 3.8+ e `pyserial`.
+## Como usar
 
----
+Troque `COM3` pela porta do seu adaptador (no Linux, algo como `/dev/ttyUSB0`).
+A opção `--porta` vem **antes** do comando.
 
-## Segurança / isenção
+Testar o adaptador e o contato com o painel (só leitura; o tráfego aparece na tela):
 
-- Use por **sua conta e risco**. Projeto sem vínculo com a Ford.
-- Faça a gravação com **carregador de bateria** (tensão estável).
-- O programa **sempre** salva um backup do bloco antes de gravar e relê depois.
-- Desligue/ligue a ignição entre operações, se o módulo pedir.
+```bash
+python focus_temp.py --porta COM3 scan
+```
+
+Analisar um log capturado do ELM-FF2 (não precisa do carro):
+
+```bash
+python focus_temp.py parse-capture captura.txt
+```
+
+Ver todas as opções:
+
+```bash
+python focus_temp.py --help
+```
+
+## Como ajudar: capturando a troca
+
+Esta é a contribuição que mais faz diferença. Basta **uma captura boa** do
+ELM-FF2 fazendo a troca em um carro real para preencher quase toda a receita.
+
+1. **Grave o tráfego da porta serial.** O jeito mais simples é usar um monitor de
+   porta serial (como o HHD Serial Monitor) na porta do adaptador. Com portas
+   virtuais (com0com), você também precisa de uma ponte até a porta real do
+   adaptador (como o hub4com), senão os comandos não chegam ao carro.
+2. **No ELM-FF2, faça apenas a troca de temperatura** enquanto o log grava. Pode
+   ser em qualquer sentido: o que importa é a captura mostrar a leitura e a
+   gravação do bloco de configuração. Se o seu carro já está em "real", capture a
+   volta para "simulada" e depois retorne.
+3. **Salve o log como `captura.txt`**, no formato descrito abaixo.
+4. **Rode a análise:** `python focus_temp.py parse-capture captura.txt`
+5. **Apague o VIN e outros dados pessoais** e abra uma
+   [issue](https://github.com/renanzm/focus-temp-tool/issues) com o log e a
+   saída do comando, informando o ano do carro, o motor e o adaptador.
+
+### Formato do log
+
+Cada linha precisa começar com a direção do tráfego: `>>`, `TX`, `SEND` ou `->`
+para o que foi enviado, e `<<`, `RX`, `RECV` ou `<-` para o que foi recebido.
+
+### Exemplo
+
+> **Os valores abaixo são fictícios** e servem só para mostrar o formato.
+> **Não os use no seu carro.**
+
+```text
+>> ATSH720
+<< OK
+>> 2101
+<< 728 06 61 01 AA BB CC 04
+>> 2701
+<< 728 04 67 01 12 34
+>> 3B01AABBCC14
+<< 728 02 7B 01
+```
+
+Saída do `parse-capture` para esse log:
+
+```text
+Linha do tempo de diagnóstico:
+
+  REQ  0x720  svc=ReadDataByLocalId  dados=2101
+  RESP 0x728  svc=ReadDataByLocalId  dados=6101AABBCC04
+  REQ  0x720  svc=SecurityAccess  dados=2701
+  RESP 0x728  svc=SecurityAccess  dados=67011234
+  REQ  0x720  svc=WriteDataByLocalId  dados=3B01AABBCC14
+  RESP 0x728  svc=WriteDataByLocalId  dados=7B01
+
+Security Access (0x27) presente? SIM
+
+Tentando deduzir byte/bit alterado (leitura x escrita):
+  byte_offset=4  bit=4  (0x04 -> 0x14)
+```
+
+O `byte_offset` é contado a partir do byte logo depois do código do serviço. Ele
+é uma **pista para conferir**, não um valor pronto para gravar.
+
+## O que já se sabe sobre o ELM-FF2
+
+O ELM-FF2 foi analisado para entender como ele faz a troca:
+
+- É um programa em Delphi que fala com o ELM327 pela porta serial do Windows.
+- As opções do painel aparecem como `IPC34` (temperatura simulada) e `IPC36`
+  (temperatura real). O próprio programa avisa que a leitura real não funciona
+  sem o sensor físico.
+- Os bytes do protocolo são montados durante a execução. A análise estática não
+  revelou com segurança os IDs CAN, o Security Access, o byte/bit nem o checksum.
+- Mesmo que revelasse, não daria para validar sem um carro. Por isso a captura é a
+  fonte de verdade deste projeto.
+
+Este repositório **não contém código, binários nem arquivos do ELM-FF2**. O
+projeto não tem vínculo com os autores dele. A cópia analisada não trazia licença
+nem termos de uso.
+
+## Como o código está organizado
+
+| Arquivo                        | Para que serve |
+|--------------------------------|----------------|
+| [`focus_temp.py`](focus_temp.py) | O programa: comandos, comunicação com o ELM327 e ISO-TP |
+| [`recipe.py`](recipe.py)       | A "receita": tudo que é específico do carro, incluindo a trava `VERIFICADO` |
+| [`capture.py`](capture.py)     | A análise dos logs capturados |
+
+## Segurança
+
+- **Use por sua conta e risco.** Este projeto não tem vínculo com a Ford.
+- **Nunca grave valores "no chute"** e não mude `VERIFICADO` para `True` sem ter
+  confirmado todos os itens da lista acima.
+- **Use um carregador de bateria** em qualquer gravação: queda de tensão durante a
+  escrita pode corromper o módulo. Isso vale também ao usar o ELM-FF2.
+- **Depois que a gravação for liberada**, o programa salva um backup do bloco antes
+  de gravar, pede confirmação e relê o bloco no final. Ainda não existe comando
+  para restaurar esse backup.
+- **Seus dados ficam fora do Git.** O `.gitignore` já ignora `captura*.txt`,
+  `*.log` e `backup_ipc_*.bin`, que podem conter dados do seu carro.
 
 ## Licença
 
-MIT — veja [LICENSE](LICENSE). Contribuições (capturas, confirmação de valores,
-suporte a outros módulos) são bem-vindas.
+[MIT](LICENSE). Capturas, confirmações de valores e correções são muito bem-vindas.
